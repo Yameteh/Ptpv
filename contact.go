@@ -14,10 +14,10 @@ const (
 )
 
 type Contact struct {
-	Id        int
+	Id        uint64
 	Account   string
 	Password  string
-	SessionId uint64
+	Session   uint64
 	State     int
 }
 
@@ -29,10 +29,14 @@ func (c *Contact) UpdateContactDb() {
 	}
 }
 
-func contactRegist(a string, p string) (int, Contact) {
+func contactRegist(a string, p string) (int, *Contact) {
 	o := orm.NewOrm()
-	contact := Contact{Account:a, Password:p}
-	err := o.Read(&contact)
+	contact := new(Contact)
+	//contact.Account = a;
+	//contact.Password = p;
+	//err := o.Read(contact)
+	err := o.QueryTable("contact").Filter("account",a).Filter("password",p).One(contact)
+
 	if err != nil {
 		logs.Error(err)
 		return CONTACT_STATE_UNKOWN, contact

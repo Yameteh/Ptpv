@@ -14,16 +14,16 @@ type Gateway struct {
 }
 
 func NewGateway(domain string, port int) *Gateway {
-	return &Gateway{domain, port,nil}
+	return &Gateway{domain, port, nil}
 }
 
-func (g *Gateway) GetSession(id uint64) *link.Session{
+func (g *Gateway) GetSession(id uint64) *link.Session {
 	return g.server.GetSession(id)
 }
 
 func (g *Gateway) start() {
 	json := codec.Json()
-	json.RegisterName("PtpvMessage",PtpvMessage{})
+	json.RegisterName("PtpvMessage", PtpvMessage{})
 	address := fmt.Sprintf("%s:%d", g.Domain, g.Port)
 	var err error
 	g.server, err = link.Listen("tcp", address, json, 0, link.HandlerFunc(handleSessionLoop))
@@ -43,7 +43,6 @@ func handleSessionLoop(session *link.Session) {
 		}
 
 		if msg, ok := req.(*PtpvMessage); ok {
-			logs.Info(msg)
 			handleReqMessage(session, msg)
 		}
 
@@ -51,22 +50,24 @@ func handleSessionLoop(session *link.Session) {
 }
 
 func handleReqMessage(session *link.Session, msg *PtpvMessage) {
-	logs.Info("handle req message")
 	switch msg.Cmd{
 	case "REGISTER":
+		logs.Info("REGISTER [%s]",msg.From)
 		ret, c := contactRegist(msg.From, msg.Body)
 		if ret == CONTACT_STATE_UNKOWN {
 			rsp := PtpvMessage{Cmd:"ACK", From:msg.From, To:msg.To, Channel:"", Body:"400:unknow account"}
 			session.Send(rsp)
 		} else {
-			c.SessionId = session.ID()
+			c.Session = session.ID()
 			c.State = CONTACT_STATE_REACHABLE
 			c.UpdateContactDb()
-			AddActiveContact(&c)
+			AddActiveContact(c)
 			rsp := PtpvMessage{Cmd:"ACK", From:msg.From, To:msg.To, Channel:"", Body:"200:ok"}
 			session.Send(rsp)
+			logs.Info("REGISER success")
 		}
 	case "INVITE":
+		logs.Info("INVITE [%s -> %s]", msg.From, msg.To)
 		cf, exist := GetActiveContact(msg.From)
 		if exist {
 			switch cf.State {
@@ -75,14 +76,23 @@ func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 				if exist {
 					switch ct.State {
 					case CONTACT_STATE_REACHABLE:
-						st := gateway.GetSession(ct.SessionId)
-						st.Send(msg)
+						st := gateway.GetSession(ct.Session)
+						if st == nil {
+							logs.Info("get st nil")
+						} else {
+							err := st.Send(*msg)
+							if err != nil {
+								logs.Error(err)
+							}
+
+						}
+
 					case CONTACT_STATE_CALLING:
-						logs.Error("invite contact calling")
+						logs.Error("INVITE callee calling")
 						rsp := PtpvMessage{Cmd:"ACK", From:msg.From, To:msg.To, Channel:"", Body:"404:invite contact calling"}
 						session.Send(rsp)
 					case CONTACT_STATE_UNKOWN:
-						logs.Error("invite contact not registed")
+						logs.Error("INVITE callee not registed")
 						rsp := PtpvMessage{Cmd:"ACK", From:msg.From, To:msg.To, Channel:"", Body:"403:invite contact registed"}
 						session.Send(rsp)
 
@@ -90,17 +100,17 @@ func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 						logs.Error("unkonw contact state")
 
 					}
-				}else {
-					logs.Error("invite account not registed")
+				} else {
+					logs.Error("INVITE caller not registed")
 					rsp := PtpvMessage{Cmd:"ACK", From:msg.From, To:msg.To, Channel:"", Body:"400:invite contact not registed"}
 					session.Send(rsp)
 				}
 			case CONTACT_STATE_CALLING:
-				logs.Info("invite when calling")
+				logs.Info("INVITE caller calling")
 				rsp := PtpvMessage{Cmd:"ACK", From:msg.From, To:msg.To, Channel:"", Body:"401:you state calling"}
 				session.Send(rsp)
 			case CONTACT_STATE_UNKOWN:
-				logs.Info("invite when not registed")
+				logs.Info("INVITE caller not registed")
 				rsp := PtpvMessage{Cmd:"ACK", From:msg.From, To:msg.To, Channel:"", Body:"402:you not registed"}
 				session.Send(rsp)
 			default:
@@ -112,41 +122,55 @@ func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 			session.Send(rsp)
 		}
 	case "ANSWER":
+		logs.Info("ANSWER [%s -> %s]", msg.From, msg.To)
 		ct, exist := GetActiveContact(msg.To)
 		if exist && ct.State != CONTACT_STATE_UNKOWN {
 			cf, exist := GetActiveContact(msg.From)
-			if exist && cf.State == CONTACT_STATE_REACHABLE{
+			if exist && cf.State == CONTACT_STATE_REACHABLE {
 				cf.State = CONTACT_STATE_CALLING
 				cf.UpdateContactDb()
-			}else {
-				logs.Error("answer From not exist")
+			} else {
+				logs.Error("ANSWER caller not exist")
 			}
-			st := gateway.GetSession(ct.SessionId)
-			st.Send(msg)
+			st := gateway.GetSession(ct.Session)
+			err := st.Send(msg)
+			if err != nil {
+				logs.Error(err)
+			}
 		}
 	case "INDICATE":
+		logs.Info("INDICATE [%s -> %s]", msg.From, msg.To)
 		ct, exist := GetActiveContact(msg.To)
 		if exist && ct.State != CONTACT_STATE_UNKOWN {
-			st := gateway.GetSession(ct.SessionId)
-			st.Send(msg)
-		}else {
-			logs.Info("indicate To not exist")
+			st := gateway.GetSession(ct.Session)
+			err := st.Send(msg)
+			if err != nil {
+				logs.Error(err)
+			}
+		} else {
+			logs.Info("INDICATE callee not exist")
 		}
 	case "DELINDICATE":
+		logs.Info("DELINDICATE [%s -> %s]",msg.From,msg.To)
 		ct, exist := GetActiveContact(msg.To)
 		if exist && ct.State != CONTACT_STATE_UNKOWN {
-			st := gateway.GetSession(ct.SessionId)
-			st.Send(msg)
-		}else {
-			logs.Info("remove indicate to not exist")
+			st := gateway.GetSession(ct.Session)
+			err := st.Send(msg)
+			if err != nil {
+				logs.Error(err)
+			}
+
+		} else {
+			logs.Info("DELINDICATE callee not exist")
 		}
 	case "BYE":
+		logs.Info("BYE [%s -> %s]",msg.From,msg.To)
 		cf, exist := GetActiveContact(msg.From)
 		if exist && cf.State != CONTACT_STATE_UNKOWN {
 			cf.State = CONTACT_STATE_REACHABLE
 			cf.UpdateContactDb()
-		}else {
-			logs.Info("bye From not exist")
+		} else {
+			logs.Info("BYE caller not exist")
 		}
 	}
 }
