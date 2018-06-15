@@ -172,6 +172,9 @@ func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 		} else {
 			logs.Info("BYE caller not exist")
 		}
+	case "TICK":
+		logs.Info("TICK session %d",session.ID())
 	}
+
 }
 
