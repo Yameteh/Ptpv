@@ -20,7 +20,7 @@ func initLog()  {
 	logs.SetLogger("console")
 	logs.EnableFuncCallDepth(true)
 	logs.SetLogFuncCallDepth(3)
-	
+
 	gateway = NewGateway("0.0.0.0",8787)
 	gateway.start()
 }
