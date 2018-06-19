@@ -13,6 +13,17 @@ type Gateway struct {
 	server *link.Server
 }
 
+
+const (
+	CMD_REGISTER = "REGISTER"
+	CMD_INVITE   = "INVITE"
+	CMD_ANSWER   = "ANSWER"
+	CMD_INDICATE = "INDICATE"
+	CMD_DELINDICATE = "DELINDICATE"
+	CMD_BYE = "BYE"
+	CMD_TICK = "TICK"
+)
+
 func NewGateway(domain string, port int) *Gateway {
 	return &Gateway{domain, port, nil}
 }
@@ -51,7 +62,7 @@ func handleSessionLoop(session *link.Session) {
 
 func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 	switch msg.Cmd{
-	case "REGISTER":
+	case CMD_REGISTER:
 		logs.Info("REGISTER [%s]",msg.From)
 		ret, c := contactRegist(msg.From, msg.Body)
 		if ret == CONTACT_STATE_UNKOWN {
@@ -66,12 +77,14 @@ func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 			session.Send(rsp)
 			logs.Info("REGISER success")
 		}
-	case "INVITE":
+	case CMD_INVITE:
 		logs.Info("INVITE [%s -> %s]", msg.From, msg.To)
 		cf, exist := GetActiveContact(msg.From)
 		if exist {
 			switch cf.State {
 			case CONTACT_STATE_REACHABLE:
+				cf.State = CONTACT_STATE_CALLING
+				cf.UpdateContactDb()
 				ct, exist := GetActiveContact(msg.To)
 				if exist {
 					switch ct.State {
@@ -84,7 +97,6 @@ func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 							if err != nil {
 								logs.Error(err)
 							}
-
 						}
 
 					case CONTACT_STATE_CALLING:
@@ -121,7 +133,7 @@ func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 			rsp := PtpvMessage{Cmd:"ACK", From:msg.From, To:msg.To, Channel:"", Body:"402:you not registed"}
 			session.Send(rsp)
 		}
-	case "ANSWER":
+	case CMD_ANSWER:
 		logs.Info("ANSWER [%s -> %s]", msg.From, msg.To)
 		ct, exist := GetActiveContact(msg.To)
 		if exist && ct.State != CONTACT_STATE_UNKOWN {
@@ -138,7 +150,7 @@ func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 				logs.Error(err)
 			}
 		}
-	case "INDICATE":
+	case CMD_INDICATE:
 		logs.Info("INDICATE [%s -> %s]", msg.From, msg.To)
 		ct, exist := GetActiveContact(msg.To)
 		if exist && ct.State != CONTACT_STATE_UNKOWN {
@@ -150,7 +162,7 @@ func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 		} else {
 			logs.Info("INDICATE callee not exist")
 		}
-	case "DELINDICATE":
+	case CMD_DELINDICATE:
 		logs.Info("DELINDICATE [%s -> %s]",msg.From,msg.To)
 		ct, exist := GetActiveContact(msg.To)
 		if exist && ct.State != CONTACT_STATE_UNKOWN {
@@ -163,7 +175,7 @@ func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 		} else {
 			logs.Info("DELINDICATE callee not exist")
 		}
-	case "BYE":
+	case CMD_BYE:
 		logs.Info("BYE [%s -> %s]",msg.From,msg.To)
 		cf, exist := GetActiveContact(msg.From)
 		if exist && cf.State != CONTACT_STATE_UNKOWN {
@@ -172,7 +184,7 @@ func handleReqMessage(session *link.Session, msg *PtpvMessage) {
 		} else {
 			logs.Info("BYE caller not exist")
 		}
-	case "TICK":
+	case CMD_TICK:
 		logs.Info("TICK session %d",session.ID())
 	}
 

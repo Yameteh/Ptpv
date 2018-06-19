@@ -32,11 +32,7 @@ func (c *Contact) UpdateContactDb() {
 func contactRegist(a string, p string) (int, *Contact) {
 	o := orm.NewOrm()
 	contact := new(Contact)
-	//contact.Account = a;
-	//contact.Password = p;
-	//err := o.Read(contact)
 	err := o.QueryTable("contact").Filter("account",a).Filter("password",p).One(contact)
-
 	if err != nil {
 		logs.Error(err)
 		return CONTACT_STATE_UNKOWN, contact
